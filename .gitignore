@@ -110,3 +110,4 @@ local.properties
 
 *.cyclo
 *.su
+*.elf
