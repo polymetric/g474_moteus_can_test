@@ -52,15 +52,16 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 
-FDCAN_TxHeaderTypeDef TxHeader;
-FDCAN_RxHeaderTypeDef RxHeader;
+char pbuf[256];
 
-uint32_t TxMailbox0, TxMailbox1;
+Moteus moteus1(hfdcan1, []() {
+	  Moteus::Options options;
+	  options.id = 1;
+	  return options;
+}());
 
-uint8_t TxData[64];
-uint8_t RxData[64];
-
-uint32_t msg_count = 0;
+uint32_t last_send = 0;
+uint32_t loop_count = 0;
 
 /* USER CODE END PV */
 
@@ -112,16 +113,8 @@ int main(void)
   /* USER CODE BEGIN 2 */
   HAL_FDCAN_Start(&hfdcan1);
 
-  TxHeader.Identifier = 0x8001;
-  TxHeader.IdType = FDCAN_EXTENDED_ID;
-  TxHeader.TxFrameType = FDCAN_DATA_FRAME;
-  TxHeader.DataLength = FDCAN_DLC_BYTES_5;
-  TxHeader.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
-  TxHeader.BitRateSwitch = FDCAN_BRS_ON;
-  TxHeader.FDFormat = FDCAN_FD_CAN;
-  TxHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
-  TxHeader.MessageMarker = 0;
-
+  sprintf(pbuf, "helo");
+  HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
 
   /* USER CODE END 2 */
 
@@ -135,26 +128,23 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-//	  char txbuf[64];
-//	  char rxbuf[64];
-	  char pbuf[256];
-//	  sprintf(buf, "helo\r\n");
-//	  HAL_UART_Transmit(&huart2, buf, strlen(buf), 10);
+	const auto now = HAL_GetTick();
+	if (now - last_send >= 200) {
+//		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+		sprintf(pbuf, "blah\n");
+		HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
 
-//	  memset(txbuf, )
-//	  sprintf(txbuf, "balls");
-//
-//	  if (HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, (uint8_t*) txbuf) != HAL_OK) {
-//		  Error_Handler();
-//	  }
-//
-//	  sprintf(pbuf, "sent: %s\n", txbuf);
-//	  HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
-//
-//	  while (HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &RxHeader, (uint8_t*) rxbuf) != HAL_OK)
-//		  ;
-//	  sprintf(pbuf, "rcvd: %s\n", rxbuf);
-//	  HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
+		Moteus::PositionMode::Command cmd;
+		cmd.position = 0;
+		cmd.velocity = 0;
+		cmd.accel_limit = 1;
+
+		moteus1.SetPosition(cmd);
+
+		loop_count += 1;
+		last_send = now;
+	}
 
     /* USER CODE END WHILE */
 

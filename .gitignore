@@ -108,4 +108,5 @@ local.properties
 # debug information files
 *.dwo
 
-
+*.cyclo
+*.su

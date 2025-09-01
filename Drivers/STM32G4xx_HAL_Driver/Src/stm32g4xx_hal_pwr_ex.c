@@ -147,7 +147,7 @@ uint32_t HAL_PWREx_GetVoltageRange(void)
   *        a value up to 170 MHz after calling HAL_PWREx_ControlVoltageScaling() API.
   * @note  When moving from Range 2 to Range 1, the API waits for VOSF flag to be
   *        cleared before returning the status. If the flag is not cleared within
-  *        50 HAL_GetTickeconds, HAL_TIMEOUT status is reported.
+  *        50 microseconds, HAL_TIMEOUT status is reported.
   * @retval HAL Status
   */
 HAL_StatusTypeDef HAL_PWREx_ControlVoltageScaling(uint32_t VoltageScaling)
