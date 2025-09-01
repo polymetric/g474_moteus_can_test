@@ -75,10 +75,11 @@ class Moteus {
     Options() {}
   };
 
-  Moteus(FDCAN_HandleTypeDef& can_bus,
+  Moteus(FDCAN_HandleTypeDef& can_bus, TIM_HandleTypeDef& htim,
          const Options& options = {})
       : can_bus_(can_bus),
-        options_(options) {
+		htim_(htim),
+        options_(options){
     mm::CanData can_data;
     mm::WriteCanData query_write(&can_data);
     mm::Query::Make(&query_write, options_.query_format);
@@ -386,11 +387,11 @@ class Moteus {
   /////////////////////////////////////////
   // Diagnostic channel operations
 
-//  enum DiagnosticReplyMode {
-//    kExpectOK,
-//    kExpectSingleLine,
-//  };
-//
+  enum DiagnosticReplyMode {
+    kExpectOK,
+    kExpectSingleLine,
+  };
+
 //  std::string DiagnosticCommand(const std::string& message_in,
 //                           DiagnosticReplyMode reply_mode = kExpectOK) {
 //    {
@@ -414,12 +415,12 @@ class Moteus {
 //    std::string response;
 //    std::string current_line;
 //
-//    const auto start = HAL_GetTick();
+//    const auto start = __HAL_TIM_GET_COUNTER(&htim_);
 //    auto end = start + kDiagnosticTimeoutUs;
 //
 //    while (true) {
 //      {
-//        const auto now = HAL_GetTick();
+//        const auto now = __HAL_TIM_GET_COUNTER(&htim_);
 //        if (static_cast<long>(now - end) > 0) {
 //          return {};
 //        }
@@ -436,7 +437,7 @@ class Moteus {
 //      while (true) {
 //        if (![&]() {
 //          while (!Poll()) {
-//            const auto now = HAL_GetTick();
+//            const auto now = __HAL_TIM_GET_COUNTER(&htim_);
 //            if (static_cast<long>(now - end) > 0) {
 //              return false;
 //            }
@@ -512,13 +513,13 @@ class Moteus {
 //      BeginSingleCommand(frame);
 //    }
 //
-//    const auto start = HAL_GetTick();
+//    const auto start = __HAL_TIM_GET_COUNTER(&htim_);
 //    auto end = start + kDiagnosticTimeoutUs;
 //
 //    while (true) {
 //      if (![&]() {
 //        while (!Poll()) {
-//          const auto now = HAL_GetTick();
+//          const auto now = __HAL_TIM_GET_COUNTER(&htim_);
 //          if (static_cast<long>(now - end) > 0) {
 //            return false;
 //          }
@@ -557,7 +558,7 @@ class Moteus {
   /// has been received.  The parsed results can be seen in
   /// Moteus::last_result()
   bool Poll() {
-    const auto now = HAL_GetTick();
+    const auto now = __HAL_TIM_GET_COUNTER(&htim_);
 
     // Ensure any interrupts have been handled.
 //    can_bus_.poll();
@@ -658,12 +659,12 @@ class Moteus {
 
     if (!reply_required) { return false; }
 
-    auto start = HAL_GetTick();
+    auto start = __HAL_TIM_GET_COUNTER(&htim_);
     auto end = start + options_.min_rcv_wait_us;
     bool got_a_response = false;
 
     while (true) {
-      const auto now = HAL_GetTick();
+      const auto now = __HAL_TIM_GET_COUNTER(&htim_);
       const auto delta = static_cast<long>(now - end);
       if (delta > 0) {
         // We timed out.
@@ -753,6 +754,7 @@ class Moteus {
   }
 
   FDCAN_HandleTypeDef& can_bus_;
+  TIM_HandleTypeDef& htim_;
   const Options options_;
 
   Result last_result_;
