@@ -1,0 +1,16 @@
+C:\ST\STM32CubeIDE_1.18.1\STM32CubeIDE\plugins\com.st.stm32cube.ide.mcu.externaltools.gnu-tools-for-stm32.13.3.rel1.win32_1.0.0.202411081344\tools\bin/../lib/gcc/arm-none-eabi/13.3.1/../../../../arm-none-eabi/include/c++/13.3.1/cmath:1126:3:constexpr bool std::isfinite(double)	3
+../Core/Inc/moteus_multiplex.h:86:17:static int8_t mjbots::moteus::detail::numeric_limits<signed char>::max()	1
+../Core/Inc/moteus_multiplex.h:87:17:static int8_t mjbots::moteus::detail::numeric_limits<signed char>::min()	1
+../Core/Inc/moteus_multiplex.h:93:18:static int16_t mjbots::moteus::detail::numeric_limits<short int>::max()	1
+../Core/Inc/moteus_multiplex.h:94:18:static int16_t mjbots::moteus::detail::numeric_limits<short int>::min()	1
+../Core/Inc/moteus_multiplex.h:100:18:static int32_t mjbots::moteus::detail::numeric_limits<long int>::max()	1
+../Core/Inc/moteus_multiplex.h:101:18:static int32_t mjbots::moteus::detail::numeric_limits<long int>::min()	1
+../Core/Src/main.cpp:85:5:int main()	3
+../Core/Src/main.cpp:170:6:void SystemClock_Config()	3
+../Core/Src/main.cpp:217:13:void MX_FDCAN1_Init()	3
+../Core/Src/main.cpp:269:13:void MX_USART2_UART_Init()	5
+../Core/Src/main.cpp:317:13:void MX_GPIO_Init()	1
+../Core/Src/main.cpp:342:6:void Error_Handler()	1
+../Core/Inc/moteus_multiplex.h:123:3:T mjbots::moteus::{anonymous}::Saturate(double, double) [with T = signed char]	4
+../Core/Inc/moteus_multiplex.h:123:3:T mjbots::moteus::{anonymous}::Saturate(double, double) [with T = short int]	4
+../Core/Inc/moteus_multiplex.h:123:3:T mjbots::moteus::{anonymous}::Saturate(double, double) [with T = long int]	4
