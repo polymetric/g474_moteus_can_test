@@ -53,9 +53,10 @@ UART_HandleTypeDef huart2;
 
 char pbuf[256];
 
-Moteus moteus1(hfdcan1, htim2, []() {
+Moteus moteus1(hfdcan1, huart2, htim2, []() {
 	  Moteus::Options options;
 	  options.id = 1;
+	  options.disable_brs = false;
 	  return options;
 }());
 
@@ -118,6 +119,8 @@ int main(void)
   sprintf(pbuf, "helo");
   HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
 
+  moteus1.SetStop();
+
   /* USER CODE END 2 */
 
   /* Initialize led */
@@ -131,17 +134,64 @@ int main(void)
   while (1)
   {
 	const auto now = HAL_GetTick();
-	if (now - last_send >= 200) {
+	if (now - last_send >= 20) {
 		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-		sprintf(pbuf, "%lu\n", __HAL_TIM_GET_COUNTER(&htim2));
-		HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
+
+//		if (moteus1.last_result().values.mode != mjbots::moteus::Mode::kPosition) {
+//			  moteus1.SetStop();
+//		}
 
 		Moteus::PositionMode::Command cmd;
-		cmd.position = 0;
-		cmd.velocity = 0;
-		cmd.accel_limit = 1;
+		if (loop_count % 50 > 25) {
+			cmd.position = 0;
+			} else {
+				cmd.position = 0.2;
+		}
+//		cmd.position = loop-_count/500.0f;
+//		cmd.position = NaN;
+		cmd.velocity = 0.0f;
+		cmd.velocity_limit = 0.1f;
+		cmd.accel_limit = 1.0f;
 
 		moteus1.SetPosition(cmd);
+
+		  auto print_moteus = [](const Moteus::Query::Result& query) {
+			size_t offset = 0;
+		    offset += sprintf(pbuf+offset, "\n\nmode: %d\n", static_cast<int>(query.mode));
+		    offset += sprintf(pbuf+offset, "position: %f\n", query.position);
+		    offset += sprintf(pbuf+offset, "velocity: %f\n", query.velocity);
+			HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
+		  };
+
+
+		  print_moteus(moteus1.last_result().values);
+//		  offset += sprintf(pbuf, " / ");
+//		  print_moteus(moteus2.last_result().values);
+		  sprintf(pbuf, "requested position: %f\nrequested velocity: %f\nrequested accel limit: %f\n", cmd.position, cmd.velocity, cmd.accel_limit);
+			HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
+
+		FDCAN_ProtocolStatusTypeDef protocol_status;
+		HAL_FDCAN_GetProtocolStatus(&hfdcan1, &protocol_status);
+//		if (protocol_status.LastErrorCode != FDCAN_PROTOCOL_ERROR_NO_CHANGE || protocol_status.BusOff) {
+			sprintf(pbuf,
+					"\nlast error code: %lu\ndata last error code: %lu\nactivity: %lu\nbus off: %lu\ndelay comp: %lu\n\n",
+					protocol_status.LastErrorCode,
+					protocol_status.DataLastErrorCode,
+					protocol_status.Activity,
+					protocol_status.BusOff,
+					protocol_status.TDCvalue);
+			HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
+//		}
+
+		auto fdcan_state = HAL_FDCAN_GetState(&hfdcan1);
+		sprintf(pbuf, "fdcan_state: %d", fdcan_state);
+
+
+
+	    // If we have gotten into a BusOff state, recover.
+	    if (protocol_status.BusOff) {
+	      hfdcan1.Instance->CCCR &= ~FDCAN_CCCR_INIT;
+	    }
 
 		loop_count += 1;
 		last_send = now;
@@ -191,8 +241,8 @@ void SystemClock_Config(void)
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_4) != HAL_OK)
   {
@@ -218,8 +268,8 @@ static void MX_FDCAN1_Init(void)
   hfdcan1.Instance = FDCAN1;
   hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV1;
   hfdcan1.Init.FrameFormat = FDCAN_FRAME_FD_BRS;
-  hfdcan1.Init.Mode = FDCAN_MODE_INTERNAL_LOOPBACK;
-  hfdcan1.Init.AutoRetransmission = DISABLE;
+  hfdcan1.Init.Mode = FDCAN_MODE_NORMAL;
+  hfdcan1.Init.AutoRetransmission = ENABLE;
   hfdcan1.Init.TransmitPause = DISABLE;
   hfdcan1.Init.ProtocolException = DISABLE;
   hfdcan1.Init.NominalPrescaler = 1;
@@ -227,7 +277,7 @@ static void MX_FDCAN1_Init(void)
   hfdcan1.Init.NominalTimeSeg1 = 56;
   hfdcan1.Init.NominalTimeSeg2 = 28;
   hfdcan1.Init.DataPrescaler = 1;
-  hfdcan1.Init.DataSyncJumpWidth = 1;
+  hfdcan1.Init.DataSyncJumpWidth = 5;
   hfdcan1.Init.DataTimeSeg1 = 11;
   hfdcan1.Init.DataTimeSeg2 = 5;
   hfdcan1.Init.StdFiltersNbr = 0;
@@ -247,6 +297,9 @@ static void MX_FDCAN1_Init(void)
           FDCAN_FILTER_REMOTE) != HAL_OK) {
     Error_Handler();
   }
+
+  HAL_FDCAN_EnableTxDelayCompensation(&hfdcan1);
+  HAL_FDCAN_ConfigTxDelayCompensation(&hfdcan1, 10, 0);
 
   /* USER CODE END FDCAN1_Init 2 */
 

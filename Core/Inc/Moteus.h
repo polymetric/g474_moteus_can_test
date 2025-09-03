@@ -15,6 +15,7 @@
 #pragma once
 
 #include <string>
+#include <string.h>
 #include "moteus_protocol.h"
 
 namespace mm = mjbots::moteus;
@@ -75,9 +76,10 @@ class Moteus {
     Options() {}
   };
 
-  Moteus(FDCAN_HandleTypeDef& can_bus, TIM_HandleTypeDef& htim,
+  Moteus(FDCAN_HandleTypeDef& can_bus, UART_HandleTypeDef& huart, TIM_HandleTypeDef& htim,
          const Options& options = {})
       : can_bus_(can_bus),
+		huart_(huart),
 		htim_(htim),
         options_(options){
     mm::CanData can_data;
@@ -564,15 +566,66 @@ class Moteus {
 //    can_bus_.poll();
 
 //    if (!can_bus_.available()) { return false; }
-    if (HAL_FDCAN_GetState(&can_bus_) != 0) {
-    	return false;
-    }
+//    if (HAL_FDCAN_GetState(&can_bus_) != HAL_FDCAN_STATE_READY) {
+//    	return false;
+//    }
+
 
 //    CANFDMessage rx_msg;
     uint8_t rx_buf[64];
     FDCAN_RxHeaderTypeDef rx_header = {};
 //    can_bus_.receive(rx_msg);
-    HAL_FDCAN_GetRxMessage(&can_bus_, FDCAN_RX_FIFO0, &rx_header, rx_buf);
+    if (HAL_FDCAN_GetRxMessage(&can_bus_, FDCAN_RX_FIFO0, &rx_header, rx_buf) != HAL_OK) {
+    	return false;
+    }
+
+
+
+
+//  	char pbuf[256];
+//  	size_t offset = 0;
+//  	offset += sprintf(offset+pbuf, "RX: ");
+//  	for (int i = 0; i < newsize; i++) {
+//  		offset += sprintf(offset+pbuf, "%02x ", rx_buf[i]);
+//  	}
+//  	offset += sprintf(offset+pbuf, "\n");
+//  	HAL_UART_Transmit(&huart_, (uint8_t*) pbuf, strlen(pbuf), 10);
+
+  	int newsize = rx_header.DataLength;
+
+  	if (rx_header.DataLength == FDCAN_DLC_BYTES_0) {
+  	  newsize = 0;
+  	} else if (rx_header.DataLength == FDCAN_DLC_BYTES_1) {
+  	  newsize = 1;
+  	} else if (rx_header.DataLength == FDCAN_DLC_BYTES_2) {
+  	  newsize = 2;
+  	} else if (rx_header.DataLength == FDCAN_DLC_BYTES_3) {
+  	  newsize = 3;
+  	} else if (rx_header.DataLength == FDCAN_DLC_BYTES_4) {
+  	  newsize = 4;
+  	} else if (rx_header.DataLength == FDCAN_DLC_BYTES_5) {
+  	  newsize = 5;
+  	} else if (rx_header.DataLength == FDCAN_DLC_BYTES_6) {
+  	  newsize = 6;
+  	} else if (rx_header.DataLength == FDCAN_DLC_BYTES_7) {
+  	  newsize = 7;
+  	} else if (rx_header.DataLength == FDCAN_DLC_BYTES_8) {
+  	  newsize = 8;
+  	} else if (rx_header.DataLength == FDCAN_DLC_BYTES_12) {
+  	  newsize = 12;
+  	} else if (rx_header.DataLength == FDCAN_DLC_BYTES_16) {
+  	  newsize = 16;
+  	} else if (rx_header.DataLength == FDCAN_DLC_BYTES_20) {
+  	  newsize = 20;
+  	} else if (rx_header.DataLength == FDCAN_DLC_BYTES_24) {
+  	  newsize = 24;
+  	} else if (rx_header.DataLength == FDCAN_DLC_BYTES_32) {
+  	  newsize = 32;
+  	} else if (rx_header.DataLength == FDCAN_DLC_BYTES_48) {
+  	  newsize = 48;
+  	} else if (rx_header.DataLength == FDCAN_DLC_BYTES_64) {
+  	  newsize = 64;
+  	}
 
     const int8_t source = (rx_header.Identifier >> 8) & 0x7f;
     const int8_t destination = (rx_header.Identifier & 0x7f);
@@ -590,8 +643,8 @@ class Moteus {
     cf.arbitration_id = rx_header.Identifier;
     cf.destination = destination;
     cf.source = source;
-    cf.size = rx_header.DataLength;
-    ::memcpy(&cf.data[0], &rx_buf[0], rx_header.DataLength);
+    cf.size = newsize;
+    ::memcpy(&cf.data[0], &rx_buf[0], newsize);
     cf.can_prefix = can_prefix;
 
     if (rx_header.BitRateSwitch == FDCAN_BRS_ON) {
@@ -608,16 +661,19 @@ class Moteus {
     last_result_.values =
         mm::Query::Parse(&cf.data[0], cf.size);
 
+    char pbuf[256];
+    sprintf(pbuf, "\n\nRX:\n\nsource: %d\ndest: %d\nprefix: %d\n, brs: %lu\n", source, destination, can_prefix, rx_header.BitRateSwitch);
+    HAL_UART_Transmit(&huart_, (uint8_t*) pbuf, strlen(pbuf), 10);
+
     return true;
   }
 
   bool BeginSingleCommand(const mm::CanFdFrame& frame) {
 	char buf[64];
 	FDCAN_TxHeaderTypeDef tx_header;
+	memset(&tx_header, 0, sizeof(tx_header));
 
-//    CANFDMessage can_message;
     tx_header.Identifier = frame.arbitration_id;
-//    can_message.ext = true;
     tx_header.IdType = FDCAN_EXTENDED_ID;
     const bool desired_brs =
         (frame.brs == CanFdFrame::kDefault ? !options_.disable_brs :
@@ -626,29 +682,94 @@ class Moteus {
     if (frame.fdcan_frame == CanFdFrame::kDefault ||
         frame.fdcan_frame == CanFdFrame::kForceOn) {
       if (desired_brs) {
-//        can_message.type = CANFDMessage::CANFD_WITH_BIT_RATE_SWITCH;
     	  tx_header.BitRateSwitch = FDCAN_BRS_ON;
       } else {
-//    	  can_message.type = CANFDMessage::CANFD_NO_BIT_RATE_SWITCH;
   	    tx_header.BitRateSwitch = FDCAN_BRS_OFF;
       }
     } else {
-//      can_message.type = CANFDMessage::CAN_DATA;
     	tx_header.TxFrameType = FDCAN_DATA_FRAME;
     }
-    tx_header.DataLength = frame.size;
-    ::memcpy(buf, &frame.data[0], frame.size);
-    tx_header.IdType = FDCAN_EXTENDED_ID;
 
-    PadCan(buf, frame.size);
+    tx_header.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
+    tx_header.FDFormat = FDCAN_FD_CAN;
+    tx_header.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
+    tx_header.MessageMarker = 0;
+
+    ::memcpy(buf, &frame.data[0], frame.size);
+
+    int newsize = PadCan(buf, frame.size);
+
+    if (newsize == 0) {
+  		tx_header.DataLength = FDCAN_DLC_BYTES_0;
+    } else if (newsize == 1) {
+		tx_header.DataLength = FDCAN_DLC_BYTES_1;
+    } else if (newsize == 2) {
+		tx_header.DataLength = FDCAN_DLC_BYTES_2;
+    } else if (newsize == 3) {
+		tx_header.DataLength = FDCAN_DLC_BYTES_3;
+    } else if (newsize == 4) {
+		tx_header.DataLength = FDCAN_DLC_BYTES_4;
+    } else if (newsize == 5) {
+		tx_header.DataLength = FDCAN_DLC_BYTES_5;
+    } else if (newsize == 6) {
+		tx_header.DataLength = FDCAN_DLC_BYTES_6;
+    } else if (newsize == 7) {
+		tx_header.DataLength = FDCAN_DLC_BYTES_7;
+    } else if (newsize == 8) {
+		tx_header.DataLength = FDCAN_DLC_BYTES_8;
+    } else if (newsize == 12) {
+		tx_header.DataLength = FDCAN_DLC_BYTES_12;
+    } else if (newsize == 16) {
+		tx_header.DataLength = FDCAN_DLC_BYTES_16;
+    } else if (newsize == 20) {
+		tx_header.DataLength = FDCAN_DLC_BYTES_20;
+    } else if (newsize == 24) {
+		tx_header.DataLength = FDCAN_DLC_BYTES_24;
+    } else if (newsize == 32) {
+		tx_header.DataLength = FDCAN_DLC_BYTES_32;
+    } else if (newsize == 48) {
+		tx_header.DataLength = FDCAN_DLC_BYTES_48;
+    } else if (newsize == 64) {
+		tx_header.DataLength = FDCAN_DLC_BYTES_64;
+    }
+
+
+    // test force BRS on
+    // TODO remove this
+
+	  tx_header.BitRateSwitch = FDCAN_BRS_ON;
+  	tx_header.TxFrameType = FDCAN_DATA_FRAME;
+
+//    char pbuf[256];
+//    sprintf(pbuf, "\n\newsize: %d\ntx_header.DataLength: %lu\nFDCAN_DLC_BYTES_20: %lu\n\n", newsize, tx_header.DataLength, FDCAN_DLC_BYTES_20);
+//    sprintf(pbuf, "\nbitrateswitch: %d\n", tx_header.BitRateSwitch?1:0);
+//    HAL_UART_Transmit(&huart_, (uint8_t*) pbuf, strlen(pbuf), 10);
 
     // To work even when the ACAN2517FD doesn't have functioning
     // interrupts, we will just poll it before and after attempting to
     // send our message.  This slows things down, but we're on an
     // Arduino, so who cares?
 //    can_bus_.poll();
-//    can_bus_.tryToSend(can_message);
-    HAL_FDCAN_AddMessageToTxFifoQ(&can_bus_, &tx_header, reinterpret_cast<uint8_t*>(buf));
+//    can_bus_.tryToS
+
+
+
+
+//  	end(can_message);
+//  	char pbuf[256];
+//  	size_t offset = 0;
+//  	offset += sprintf(offset+pbuf, "TX: ");
+//  	for (int i = 0; i < newsize; i++) {
+//  		offset += sprintf(offset+pbuf, "%02x ", buf[i]);
+//  	}
+//  	offset += sprintf(offset+pbuf, "\n");
+//  	HAL_UART_Transmit(&huart_, (uint8_t*) pbuf, strlen(pbuf), 10);
+
+
+
+
+
+    HAL_FDCAN_AddMessageToTxFifoQ(&can_bus_, &tx_header, (uint8_t *) buf);
 //    can_bus_.poll();
 
     return frame.reply_required;
@@ -754,6 +875,7 @@ class Moteus {
   }
 
   FDCAN_HandleTypeDef& can_bus_;
+  UART_HandleTypeDef& huart_;
   TIM_HandleTypeDef& htim_;
   const Options options_;
 

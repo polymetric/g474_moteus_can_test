@@ -810,8 +810,8 @@ struct PositionMode {
     Resolution maximum_torque = kIgnore;
     Resolution stop_position = kIgnore;
     Resolution watchdog_timeout = kIgnore;
-    Resolution velocity_limit = kIgnore;
-    Resolution accel_limit = kIgnore;
+    Resolution velocity_limit = kFloat;
+    Resolution accel_limit = kFloat;
     Resolution fixed_voltage_override = kIgnore;
   };
 
