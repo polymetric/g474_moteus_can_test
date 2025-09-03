@@ -661,9 +661,9 @@ class Moteus {
     last_result_.values =
         mm::Query::Parse(&cf.data[0], cf.size);
 
-    char pbuf[256];
-    sprintf(pbuf, "\n\nRX:\n\nsource: %d\ndest: %d\nprefix: %d\n, brs: %lu\n", source, destination, can_prefix, rx_header.BitRateSwitch);
-    HAL_UART_Transmit(&huart_, (uint8_t*) pbuf, strlen(pbuf), 10);
+//    char pbuf[256];
+//    sprintf(pbuf, "\n\nRX: \n\nsource: %d\ndest: %d\nprefix: %d\n, brs: %lu\n", source, destination, can_prefix, rx_header.BitRateSwitch);
+//    HAL_UART_Transmit(&huart_, (uint8_t*) pbuf, strlen(pbuf), 10);
 
     return true;
   }

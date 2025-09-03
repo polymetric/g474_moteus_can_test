@@ -34,6 +34,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -44,6 +45,9 @@
 /* Private variables ---------------------------------------------------------*/
 
 FDCAN_HandleTypeDef hfdcan1;
+
+I2C_HandleTypeDef hi2c2;
+I2C_HandleTypeDef hi2c3;
 
 TIM_HandleTypeDef htim2;
 
@@ -60,8 +64,30 @@ Moteus moteus1(hfdcan1, huart2, htim2, []() {
 	  return options;
 }());
 
+Moteus moteus2(hfdcan1, huart2, htim2, []() {
+	  Moteus::Options options;
+	  options.id = 2;
+	  options.disable_brs = false;
+	  return options;
+}());
+
 uint32_t last_send = 0;
 uint32_t loop_count = 0;
+
+static const uint8_t AS5600_ADDR = 0x36 << 1;
+static const uint8_t AS5600_REG_ANGLE_H = 0x0E;
+static const uint8_t AS5600_REG_ANGLE_L = 0x0F;
+static const double AS5600_PPR = 4096.0;
+
+uint8_t i2c_buf[16];
+
+double pan_target = 0;
+double pan_last = 0;
+int32_t pan_revs = 0;
+
+double tilt_target = 0;
+double tilt_last = 0;
+int32_t tilt_revs = 0;
 
 /* USER CODE END PV */
 
@@ -71,6 +97,8 @@ static void MX_GPIO_Init(void);
 static void MX_FDCAN1_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_I2C3_Init(void);
+static void MX_I2C2_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -112,14 +140,17 @@ int main(void)
   MX_FDCAN1_Init();
   MX_USART2_UART_Init();
   MX_TIM2_Init();
+  MX_I2C3_Init();
+  MX_I2C2_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start(&htim2);
   HAL_FDCAN_Start(&hfdcan1);
 
-  sprintf(pbuf, "helo");
+  sprintf(pbuf, "helo\n");
   HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
 
   moteus1.SetStop();
+  moteus2.SetStop();
 
   /* USER CODE END 2 */
 
@@ -134,64 +165,100 @@ int main(void)
   while (1)
   {
 	const auto now = HAL_GetTick();
-	if (now - last_send >= 20) {
+	if (now - last_send >= 1) {
 		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+
+		// get sensor data
+		// PAN
+		i2c_buf[0] = AS5600_REG_ANGLE_H;
+		HAL_I2C_Master_Transmit(&hi2c3, AS5600_ADDR, i2c_buf, 1, 10);
+		HAL_I2C_Master_Receive(&hi2c3, AS5600_ADDR, i2c_buf, 2, 10);
+		uint16_t pan_raw = (i2c_buf[0] << 8) | (i2c_buf[1]);
+		double pan_float = pan_raw / AS5600_PPR;
+		if (pan_float > 0.75 && pan_last < 0.25) { pan_revs--; }
+		if (pan_float < 0.25 && pan_last > 0.75) { pan_revs++; }
+		pan_last = pan_float;
+		pan_target = -(pan_revs+pan_float)/19.0;
+//		sprintf(pbuf, "pan_target: %f\n", pan_target);
+//		HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
+
+		// TILT
+		i2c_buf[0] = AS5600_REG_ANGLE_H;
+		HAL_I2C_Master_Transmit(&hi2c2, AS5600_ADDR, i2c_buf, 1, 10);
+		HAL_I2C_Master_Receive(&hi2c2, AS5600_ADDR, i2c_buf, 2, 10);
+		uint16_t tilt_raw = (i2c_buf[0] << 8) | (i2c_buf[1]);
+		double tilt_float = tilt_raw / AS5600_PPR;
+		if (tilt_float > 0.75 && tilt_last < 0.25) { tilt_revs--; }
+		if (tilt_float < 0.25 && tilt_last > 0.75) { tilt_revs++; }
+		tilt_last = tilt_float;
+		tilt_target = -(tilt_revs+tilt_float)/19.0;
+//		sprintf(pbuf, "tilt_target: %f\n", tilt_target);
+//		HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
+
+
+		// send motor commands
 
 //		if (moteus1.last_result().values.mode != mjbots::moteus::Mode::kPosition) {
 //			  moteus1.SetStop();
 //		}
+//
+//		if (moteus2.last_result().values.mode != mjbots::moteus::Mode::kPosition) {
+//			  moteus2.SetStop();
+//		}
 
 		Moteus::PositionMode::Command cmd;
-		if (loop_count % 50 > 25) {
-			cmd.position = 0;
-			} else {
-				cmd.position = 0.2;
-		}
-//		cmd.position = loop-_count/500.0f;
-//		cmd.position = NaN;
+		cmd.position = pan_target;
 		cmd.velocity = 0.0f;
-		cmd.velocity_limit = 0.1f;
+//		cmd.velocity_limit = 0.1f;
 		cmd.accel_limit = 1.0f;
-
 		moteus1.SetPosition(cmd);
+		cmd.position = tilt_target;
+		moteus2.SetPosition(cmd);
 
-		  auto print_moteus = [](const Moteus::Query::Result& query) {
-			size_t offset = 0;
-		    offset += sprintf(pbuf+offset, "\n\nmode: %d\n", static_cast<int>(query.mode));
-		    offset += sprintf(pbuf+offset, "position: %f\n", query.position);
-		    offset += sprintf(pbuf+offset, "velocity: %f\n", query.velocity);
-			HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
-		  };
-
-
-		  print_moteus(moteus1.last_result().values);
-//		  offset += sprintf(pbuf, " / ");
-//		  print_moteus(moteus2.last_result().values);
-		  sprintf(pbuf, "requested position: %f\nrequested velocity: %f\nrequested accel limit: %f\n", cmd.position, cmd.velocity, cmd.accel_limit);
-			HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
 
 		FDCAN_ProtocolStatusTypeDef protocol_status;
 		HAL_FDCAN_GetProtocolStatus(&hfdcan1, &protocol_status);
-//		if (protocol_status.LastErrorCode != FDCAN_PROTOCOL_ERROR_NO_CHANGE || protocol_status.BusOff) {
-			sprintf(pbuf,
-					"\nlast error code: %lu\ndata last error code: %lu\nactivity: %lu\nbus off: %lu\ndelay comp: %lu\n\n",
-					protocol_status.LastErrorCode,
-					protocol_status.DataLastErrorCode,
-					protocol_status.Activity,
-					protocol_status.BusOff,
-					protocol_status.TDCvalue);
-			HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
-//		}
-
-		auto fdcan_state = HAL_FDCAN_GetState(&hfdcan1);
-		sprintf(pbuf, "fdcan_state: %d", fdcan_state);
-
-
-
 	    // If we have gotten into a BusOff state, recover.
 	    if (protocol_status.BusOff) {
 	      hfdcan1.Instance->CCCR &= ~FDCAN_CCCR_INIT;
 	    }
+
+
+		////////////////////// DEBUG //////////////////////////
+		if (loop_count % 50 == 0) {
+			  auto print_moteus = [](const Moteus::Query::Result& query) {
+				size_t offset = 0;
+			    offset += sprintf(pbuf+offset, "\n\nmode: %d\n", static_cast<int>(query.mode));
+//			    offset += sprintf(pbuf+offset, "position: %f\n", query.position);
+//			    offset += sprintf(pbuf+offset, "velocity: %f\n", query.velocity);
+				HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
+			  };
+
+
+			  print_moteus(moteus1.last_result().values);
+	//		  offset += sprintf(pbuf, " / ");
+	//		  print_moteus(moteus2.last_result().values);
+			  sprintf(pbuf, "requested position: %f\nrequested velocity: %f\nrequested accel limit: %f\n", cmd.position, cmd.velocity, cmd.accel_limit);
+//				HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
+
+
+
+
+			if (protocol_status.LastErrorCode != FDCAN_PROTOCOL_ERROR_NO_CHANGE || protocol_status.BusOff) {
+				sprintf(pbuf,
+						"\nlast error code: %lu\ndata last error code: %lu\nactivity: %lu\nbus off: %lu\ndelay comp: %lu\n\n",
+						protocol_status.LastErrorCode,
+						protocol_status.DataLastErrorCode,
+						protocol_status.Activity,
+						protocol_status.BusOff,
+						protocol_status.TDCvalue);
+				HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
+			}
+
+//			auto fdcan_state = HAL_FDCAN_GetState(&hfdcan1);
+//			sprintf(pbuf, "fdcan_state: %d\n", fdcan_state);
+//			HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
+		}
 
 		loop_count += 1;
 		last_send = now;
@@ -270,7 +337,7 @@ static void MX_FDCAN1_Init(void)
   hfdcan1.Init.FrameFormat = FDCAN_FRAME_FD_BRS;
   hfdcan1.Init.Mode = FDCAN_MODE_NORMAL;
   hfdcan1.Init.AutoRetransmission = ENABLE;
-  hfdcan1.Init.TransmitPause = DISABLE;
+  hfdcan1.Init.TransmitPause = ENABLE;
   hfdcan1.Init.ProtocolException = DISABLE;
   hfdcan1.Init.NominalPrescaler = 1;
   hfdcan1.Init.NominalSyncJumpWidth = 16;
@@ -302,6 +369,110 @@ static void MX_FDCAN1_Init(void)
   HAL_FDCAN_ConfigTxDelayCompensation(&hfdcan1, 10, 0);
 
   /* USER CODE END FDCAN1_Init 2 */
+
+}
+
+/**
+  * @brief I2C2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C2_Init(void)
+{
+
+  /* USER CODE BEGIN I2C2_Init 0 */
+
+  /* USER CODE END I2C2_Init 0 */
+
+  /* USER CODE BEGIN I2C2_Init 1 */
+
+  /* USER CODE END I2C2_Init 1 */
+  hi2c2.Instance = I2C2;
+  hi2c2.Init.Timing = 0x10E1A6F2;
+  hi2c2.Init.OwnAddress1 = 0;
+  hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c2.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c2.Init.OwnAddress2 = 0;
+  hi2c2.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
+  hi2c2.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c2.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Analogue filter
+  */
+  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c2, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Digital filter
+  */
+  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c2, 0) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** I2C Fast mode Plus enable
+  */
+  HAL_I2CEx_EnableFastModePlus(I2C_FASTMODEPLUS_I2C2);
+  /* USER CODE BEGIN I2C2_Init 2 */
+
+  /* USER CODE END I2C2_Init 2 */
+
+}
+
+/**
+  * @brief I2C3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C3_Init(void)
+{
+
+  /* USER CODE BEGIN I2C3_Init 0 */
+
+  /* USER CODE END I2C3_Init 0 */
+
+  /* USER CODE BEGIN I2C3_Init 1 */
+
+  /* USER CODE END I2C3_Init 1 */
+  hi2c3.Instance = I2C3;
+  hi2c3.Init.Timing = 0x10E1A6F2;
+  hi2c3.Init.OwnAddress1 = 108;
+  hi2c3.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c3.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c3.Init.OwnAddress2 = 0;
+  hi2c3.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
+  hi2c3.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c3.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Analogue filter
+  */
+  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c3, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Digital filter
+  */
+  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c3, 0) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** I2C Fast mode Plus enable
+  */
+  HAL_I2CEx_EnableFastModePlus(I2C_FASTMODEPLUS_I2C3);
+  /* USER CODE BEGIN I2C3_Init 2 */
+
+  /* USER CODE END I2C3_Init 2 */
 
 }
 
