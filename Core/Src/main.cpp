@@ -46,7 +46,7 @@
 
 FDCAN_HandleTypeDef hfdcan1;
 
-I2C_HandleTypeDef hi2c2;
+I2C_HandleTypeDef hi2c1;
 I2C_HandleTypeDef hi2c3;
 
 TIM_HandleTypeDef htim2;
@@ -97,8 +97,8 @@ static void MX_GPIO_Init(void);
 static void MX_FDCAN1_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_I2C1_Init(void);
 static void MX_I2C3_Init(void);
-static void MX_I2C2_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -140,8 +140,8 @@ int main(void)
   MX_FDCAN1_Init();
   MX_USART2_UART_Init();
   MX_TIM2_Init();
+  MX_I2C1_Init();
   MX_I2C3_Init();
-  MX_I2C2_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start(&htim2);
   HAL_FDCAN_Start(&hfdcan1);
@@ -178,20 +178,24 @@ int main(void)
 		if (pan_float > 0.75 && pan_last < 0.25) { pan_revs--; }
 		if (pan_float < 0.25 && pan_last > 0.75) { pan_revs++; }
 		pan_last = pan_float;
-		pan_target = -(pan_revs+pan_float)/19.0;
-//		sprintf(pbuf, "pan_target: %f\n", pan_target);
-//		HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
+//		pan_target = -(pan_revs+pan_float)/19.0;
+		pan_target = -(pan_revs+pan_float)/35.5;
+//		sprintf(pbuf, "pan_raw: %d\n", pan_raw);
+		sprintf(pbuf, "pan_target: %f\n", pan_target);
+		HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
 
 		// TILT
 		i2c_buf[0] = AS5600_REG_ANGLE_H;
-		HAL_I2C_Master_Transmit(&hi2c2, AS5600_ADDR, i2c_buf, 1, 10);
-		HAL_I2C_Master_Receive(&hi2c2, AS5600_ADDR, i2c_buf, 2, 10);
+		HAL_I2C_Master_Transmit(&hi2c1, AS5600_ADDR, i2c_buf, 1, 10);
+		HAL_I2C_Master_Receive(&hi2c1, AS5600_ADDR, i2c_buf, 2, 10);
 		uint16_t tilt_raw = (i2c_buf[0] << 8) | (i2c_buf[1]);
 		double tilt_float = tilt_raw / AS5600_PPR;
 		if (tilt_float > 0.75 && tilt_last < 0.25) { tilt_revs--; }
 		if (tilt_float < 0.25 && tilt_last > 0.75) { tilt_revs++; }
 		tilt_last = tilt_float;
-		tilt_target = -(tilt_revs+tilt_float)/19.0;
+		//		tilt_target = -(tilt_revs+tilt_float)/(4.25*6);
+				tilt_target = -(tilt_revs+tilt_float)/(9.25*6);
+//		sprintf(pbuf, "tilt_raw: %d\n\n", tilt_raw);
 //		sprintf(pbuf, "tilt_target: %f\n", tilt_target);
 //		HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
 
@@ -373,54 +377,54 @@ static void MX_FDCAN1_Init(void)
 }
 
 /**
-  * @brief I2C2 Initialization Function
+  * @brief I2C1 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_I2C2_Init(void)
+static void MX_I2C1_Init(void)
 {
 
-  /* USER CODE BEGIN I2C2_Init 0 */
+  /* USER CODE BEGIN I2C1_Init 0 */
 
-  /* USER CODE END I2C2_Init 0 */
+  /* USER CODE END I2C1_Init 0 */
 
-  /* USER CODE BEGIN I2C2_Init 1 */
+  /* USER CODE BEGIN I2C1_Init 1 */
 
-  /* USER CODE END I2C2_Init 1 */
-  hi2c2.Instance = I2C2;
-  hi2c2.Init.Timing = 0x10E1A6F2;
-  hi2c2.Init.OwnAddress1 = 0;
-  hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
-  hi2c2.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
-  hi2c2.Init.OwnAddress2 = 0;
-  hi2c2.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
-  hi2c2.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
-  hi2c2.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
-  if (HAL_I2C_Init(&hi2c2) != HAL_OK)
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.Timing = 0x00C20F27;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
   {
     Error_Handler();
   }
 
   /** Configure Analogue filter
   */
-  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c2, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
+  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c1, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
   {
     Error_Handler();
   }
 
   /** Configure Digital filter
   */
-  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c2, 0) != HAL_OK)
+  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 0) != HAL_OK)
   {
     Error_Handler();
   }
 
   /** I2C Fast mode Plus enable
   */
-  HAL_I2CEx_EnableFastModePlus(I2C_FASTMODEPLUS_I2C2);
-  /* USER CODE BEGIN I2C2_Init 2 */
+  HAL_I2CEx_EnableFastModePlus(I2C_FASTMODEPLUS_I2C1);
+  /* USER CODE BEGIN I2C1_Init 2 */
 
-  /* USER CODE END I2C2_Init 2 */
+  /* USER CODE END I2C1_Init 2 */
 
 }
 
@@ -440,8 +444,8 @@ static void MX_I2C3_Init(void)
 
   /* USER CODE END I2C3_Init 1 */
   hi2c3.Instance = I2C3;
-  hi2c3.Init.Timing = 0x10E1A6F2;
-  hi2c3.Init.OwnAddress1 = 108;
+  hi2c3.Init.Timing = 0x00C20F27;
+  hi2c3.Init.OwnAddress1 = 0;
   hi2c3.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c3.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
   hi2c3.Init.OwnAddress2 = 0;
@@ -579,6 +583,7 @@ static void MX_USART2_UART_Init(void)
   */
 static void MX_GPIO_Init(void)
 {
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
   /* USER CODE BEGIN MX_GPIO_Init_1 */
 
   /* USER CODE END MX_GPIO_Init_1 */
@@ -588,6 +593,14 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
+
+  /*Configure GPIO pin : PA9 */
+  GPIO_InitStruct.Pin = GPIO_PIN_9;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Alternate = GPIO_AF4_I2C2;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
