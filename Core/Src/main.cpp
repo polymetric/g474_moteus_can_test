@@ -55,7 +55,10 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 
+static const uint32_t LOOP_INTERVAL_MS = 1;
+
 char pbuf[256];
+size_t offset = 0;
 
 Moteus moteus1(hfdcan1, huart2, htim2, []() {
 	  Moteus::Options options;
@@ -89,6 +92,9 @@ double tilt_target = 0;
 double tilt_last = 0;
 int32_t tilt_revs = 0;
 
+int pan_speed = 0;
+int tilt_speed = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -105,6 +111,19 @@ static void MX_I2C3_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+void home() {
+	pan_target = 0;
+	pan_last = 0;
+	pan_revs = 0;
+
+	tilt_target = 0;
+	tilt_last = 0;
+	tilt_revs = 0;
+
+	sprintf(pbuf, "homed\n");
+	HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
+}
 
 /* USER CODE END 0 */
 
@@ -165,14 +184,67 @@ int main(void)
   while (1)
   {
 	const auto now = HAL_GetTick();
-	if (now - last_send >= 1) {
+	if (now - last_send >= LOOP_INTERVAL_MS) {
+//		sprintf(pbuf, "last loop time: %lu\n", now-last_send);
+//		HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
+
 		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+
+
+
+		// handle control panel inputs
+
+		// home button
+		if (HAL_GPIO_ReadPin(BTN_HOME_GPIO_Port, BTN_HOME_Pin) == GPIO_PIN_SET) {
+			HAL_GPIO_WritePin(BTN_HOME_LED_GPIO_Port, BTN_HOME_LED_Pin, GPIO_PIN_SET);
+			home();
+		} else {
+			HAL_GPIO_WritePin(BTN_HOME_LED_GPIO_Port, BTN_HOME_LED_Pin, GPIO_PIN_RESET);
+		}
+
+		// pan speed
+		if (HAL_GPIO_ReadPin(PAN_SPEED_1_GPIO_Port, PAN_SPEED_1_Pin)) {
+			pan_speed = 1;
+		}
+		if (HAL_GPIO_ReadPin(PAN_SPEED_2_GPIO_Port, PAN_SPEED_2_Pin)) {
+			pan_speed = 2;
+		}
+		if (HAL_GPIO_ReadPin(PAN_SPEED_3_GPIO_Port, PAN_SPEED_3_Pin)) {
+			pan_speed = 3;
+		}
+
+		// tilt speed
+		if (HAL_GPIO_ReadPin(TILT_SPEED_1_GPIO_Port, TILT_SPEED_1_Pin)) {
+			tilt_speed = 1;
+		}
+		if (HAL_GPIO_ReadPin(TILT_SPEED_2_GPIO_Port, TILT_SPEED_2_Pin)) {
+			tilt_speed = 2;
+		}
+		if (HAL_GPIO_ReadPin(TILT_SPEED_3_GPIO_Port, TILT_SPEED_3_Pin)) {
+			tilt_speed = 3;
+		}
+
+		if (loop_count % 100 == 0) {
+			offset = 0;
+			offset += sprintf(pbuf+offset, "mtr pwr: %d\n", HAL_GPIO_ReadPin(SW_MOTOR_POWER_GPIO_Port, SW_MOTOR_POWER_Pin));
+			offset += sprintf(pbuf+offset, "pan_speed: %d\n", pan_speed);
+			offset += sprintf(pbuf+offset, "tilt_speed: %d\n\n", tilt_speed);
+			HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
+			offset = 0;
+		}
+
+
+
+		//debug
+		loop_count += 1;
+		last_send = now;
+		continue;
 
 		// get sensor data
 		// PAN
 		i2c_buf[0] = AS5600_REG_ANGLE_H;
-		HAL_I2C_Master_Transmit(&hi2c3, AS5600_ADDR, i2c_buf, 1, 10);
-		HAL_I2C_Master_Receive(&hi2c3, AS5600_ADDR, i2c_buf, 2, 10);
+		HAL_I2C_Master_Transmit(&hi2c3, AS5600_ADDR, i2c_buf, 1, 1);
+		HAL_I2C_Master_Receive(&hi2c3, AS5600_ADDR, i2c_buf, 2, 1);
 		uint16_t pan_raw = (i2c_buf[0] << 8) | (i2c_buf[1]);
 		double pan_float = pan_raw / AS5600_PPR;
 		if (pan_float > 0.75 && pan_last < 0.25) { pan_revs--; }
@@ -182,19 +254,19 @@ int main(void)
 		pan_target = -(pan_revs+pan_float)/35.5;
 //		sprintf(pbuf, "pan_raw: %d\n", pan_raw);
 		sprintf(pbuf, "pan_target: %f\n", pan_target);
-		HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
+		HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 1);
 
 		// TILT
 		i2c_buf[0] = AS5600_REG_ANGLE_H;
-		HAL_I2C_Master_Transmit(&hi2c1, AS5600_ADDR, i2c_buf, 1, 10);
-		HAL_I2C_Master_Receive(&hi2c1, AS5600_ADDR, i2c_buf, 2, 10);
+		HAL_I2C_Master_Transmit(&hi2c1, AS5600_ADDR, i2c_buf, 1, 1);
+		HAL_I2C_Master_Receive(&hi2c1, AS5600_ADDR, i2c_buf, 2, 1);
 		uint16_t tilt_raw = (i2c_buf[0] << 8) | (i2c_buf[1]);
 		double tilt_float = tilt_raw / AS5600_PPR;
 		if (tilt_float > 0.75 && tilt_last < 0.25) { tilt_revs--; }
 		if (tilt_float < 0.25 && tilt_last > 0.75) { tilt_revs++; }
 		tilt_last = tilt_float;
 		//		tilt_target = -(tilt_revs+tilt_float)/(4.25*6);
-				tilt_target = -(tilt_revs+tilt_float)/(9.25*6);
+		tilt_target = -(tilt_revs+tilt_float)/(9.25*6);
 //		sprintf(pbuf, "tilt_raw: %d\n\n", tilt_raw);
 //		sprintf(pbuf, "tilt_target: %f\n", tilt_target);
 //		HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
@@ -231,11 +303,10 @@ int main(void)
 		////////////////////// DEBUG //////////////////////////
 		if (loop_count % 50 == 0) {
 			  auto print_moteus = [](const Moteus::Query::Result& query) {
-				size_t offset = 0;
 			    offset += sprintf(pbuf+offset, "\n\nmode: %d\n", static_cast<int>(query.mode));
 //			    offset += sprintf(pbuf+offset, "position: %f\n", query.position);
 //			    offset += sprintf(pbuf+offset, "velocity: %f\n", query.velocity);
-				HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
+				HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 1);
 			  };
 
 
@@ -256,7 +327,7 @@ int main(void)
 						protocol_status.Activity,
 						protocol_status.BusOff,
 						protocol_status.TDCvalue);
-				HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 10);
+				HAL_UART_Transmit(&huart2, (uint8_t*) pbuf, strlen(pbuf), 1);
 			}
 
 //			auto fdcan_state = HAL_FDCAN_GetState(&hfdcan1);
@@ -593,6 +664,34 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(BTN_HOME_LED_GPIO_Port, BTN_HOME_LED_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pins : PAN_SPEED_2_Pin PAN_SPEED_1_Pin */
+  GPIO_InitStruct.Pin = PAN_SPEED_2_Pin|PAN_SPEED_1_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : TILT_SPEED_3_Pin TILT_SPEED_2_Pin TILT_SPEED_1_Pin BTN_HOME_Pin */
+  GPIO_InitStruct.Pin = TILT_SPEED_3_Pin|TILT_SPEED_2_Pin|TILT_SPEED_1_Pin|BTN_HOME_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : BTN_HOME_LED_Pin */
+  GPIO_InitStruct.Pin = BTN_HOME_LED_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(BTN_HOME_LED_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : SW_MOTOR_POWER_Pin PAN_SPEED_3_Pin */
+  GPIO_InitStruct.Pin = SW_MOTOR_POWER_Pin|PAN_SPEED_3_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PA9 */
   GPIO_InitStruct.Pin = GPIO_PIN_9;

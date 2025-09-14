@@ -67,12 +67,30 @@ void Error_Handler(void);
 #define RCC_OSC_IN_GPIO_Port GPIOF
 #define RCC_OSC_OUT_Pin GPIO_PIN_1
 #define RCC_OSC_OUT_GPIO_Port GPIOF
+#define PAN_SPEED_2_Pin GPIO_PIN_4
+#define PAN_SPEED_2_GPIO_Port GPIOC
+#define PAN_SPEED_1_Pin GPIO_PIN_5
+#define PAN_SPEED_1_GPIO_Port GPIOC
+#define TILT_SPEED_3_Pin GPIO_PIN_10
+#define TILT_SPEED_3_GPIO_Port GPIOB
+#define BTN_HOME_LED_Pin GPIO_PIN_7
+#define BTN_HOME_LED_GPIO_Port GPIOC
+#define SW_MOTOR_POWER_Pin GPIO_PIN_8
+#define SW_MOTOR_POWER_GPIO_Port GPIOA
+#define PAN_SPEED_3_Pin GPIO_PIN_10
+#define PAN_SPEED_3_GPIO_Port GPIOA
 #define T_SWDIO_Pin GPIO_PIN_13
 #define T_SWDIO_GPIO_Port GPIOA
 #define T_SWCLK_Pin GPIO_PIN_14
 #define T_SWCLK_GPIO_Port GPIOA
 #define T_SWO_Pin GPIO_PIN_3
 #define T_SWO_GPIO_Port GPIOB
+#define TILT_SPEED_2_Pin GPIO_PIN_4
+#define TILT_SPEED_2_GPIO_Port GPIOB
+#define TILT_SPEED_1_Pin GPIO_PIN_5
+#define TILT_SPEED_1_GPIO_Port GPIOB
+#define BTN_HOME_Pin GPIO_PIN_6
+#define BTN_HOME_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 
